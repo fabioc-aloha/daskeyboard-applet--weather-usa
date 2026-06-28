@@ -232,7 +232,40 @@ describe('WeatherForecast', function () {
       })
     })
   });
+
+  it('#options(fieldId, "charlotte") finds Mecklenburg via alias', async function () {
+    return buildApp().then(app => {
+      return app.options('zoneId', 'charlotte').then((options) => {
+        assert.ok(options, 'No options returned');
+        const meck = options.find(o => o.key === 'NCZ071');
+        assert.ok(meck, 'Did not find NCZ071 via "charlotte" alias');
+        assert(meck.value.toLowerCase().includes('charlotte'),
+          'Alias label did not include the city name: ' + meck.value);
+      });
+    });
+  });
+
+  it('#options(fieldId, "vegas") finds Las Vegas via altName', async function () {
+    return buildApp().then(app => {
+      return app.options('zoneId', 'vegas').then((options) => {
+        assert.ok(options);
+        const lv = options.find(o => o.key === 'NVZ020');
+        assert.ok(lv, 'Did not find NVZ020 via "vegas" altName');
+      });
+    });
+  });
 })
+
+describe('loadCityAliases', function () {
+  it('loads the alias map keyed by zoneId', function () {
+    const aliases = t.loadCityAliases();
+    assert.ok(aliases, 'aliases not loaded');
+    assert.ok(aliases['NCZ071'], 'Charlotte alias missing');
+    assert.equal(aliases['NCZ071'].city, 'Charlotte');
+    assert.ok(aliases['NVZ020'].altNames.includes('Vegas'),
+      'Vegas altName not loaded');
+  });
+});
 
 async function buildApp() {
   let app = new t.WeatherForecast();

@@ -3,7 +3,7 @@
   "displayName": "Weather - USA",
   "description": "Displays weather forecast.",
   "longDescription": "Be aware of the upcoming storm, ice age or heat wave coming to your place with the Q Weather applet.",
-  "version": "1.0.12",
+  "version": "1.0.14",
   "publisher": "Das Keyboard",
   "officialProductName": "Weather - USA",
   "appUrl": "",
@@ -30,8 +30,7 @@
     "test": "mocha"
   },
   "dependencies": {
-    "daskeyboard-applet": "^2.11.1",
-    "fs": "^0.0.1-security"
+    "daskeyboard-applet": "^2.11.1"
   },
   "qConfig": {
     "geometry": {
@@ -64,6 +63,6 @@
     }
   },
   "devDependencies": {
-    "mocha": "^5.2.0"
+    "mocha": "^10.7.3"
   }
 }

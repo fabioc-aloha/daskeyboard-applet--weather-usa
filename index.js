@@ -1,10 +1,84 @@
 const q = require('daskeyboard-applet');
 const fs = require('fs');
-const request = require('request-promise');
+const https = require('https');
+const { URL } = require('url');
 const logger = q.logger;
 const apiUrl = "https://api.weather.gov";
 
+/**
+ * Minimal Promise-based GET helper using Node's built-in https module.
+ * Replaces the deprecated `request-promise` dependency.
+ * Always parses the response body as JSON.
+ */
+function httpGetJson({ url, headers }) {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(url);
+    const options = {
+      method: 'GET',
+      hostname: parsed.hostname,
+      port: parsed.port || 443,
+      path: parsed.pathname + parsed.search,
+      headers: headers || {}
+    };
+
+    const req = https.request(options, (res) => {
+      const chunks = [];
+      res.on('data', (c) => chunks.push(c));
+      res.on('end', () => {
+        const body = Buffer.concat(chunks).toString('utf8');
+        if (res.statusCode < 200 || res.statusCode >= 300) {
+          return reject(new Error(`HTTP ${res.statusCode}: ${body.slice(0, 200)}`));
+        }
+        try {
+          resolve(JSON.parse(body));
+        } catch (err) {
+          reject(new Error(`Invalid JSON from ${url}: ${err.message}`));
+        }
+      });
+    });
+
+    req.on('error', reject);
+    req.end();
+  });
+}
+
 var zones = null;
+
+// Lazy-loaded city alias map: { zoneId -> { city, altNames[] } }.
+// NWS zones are named by county/region, so common city names (Charlotte,
+// Seattle, etc.) don't appear in zones.json. The alias table in
+// city-aliases.json lets the search box find zones by city name.
+var cityAliases = null;
+function loadCityAliases() {
+  if (cityAliases !== null) return cityAliases;
+  cityAliases = {};
+  try {
+    if (fs.existsSync('./city-aliases.json')) {
+      const raw = require('./city-aliases.json');
+      for (const entry of (raw.aliases || [])) {
+        if (entry && entry.zoneId && entry.city) {
+          cityAliases[entry.zoneId] = {
+            city: entry.city,
+            altNames: Array.isArray(entry.altNames) ? entry.altNames : []
+          };
+        }
+      }
+    }
+  } catch (err) {
+    logger.error('Failed to load city-aliases.json: ' + err.message);
+  }
+  return cityAliases;
+}
+
+// Return true if the search term matches the alias entry's city or altNames.
+function aliasMatchesSearch(entry, search) {
+  if (!entry || !search) return false;
+  if (entry.city && entry.city.toLowerCase().includes(search)) return true;
+  for (const alt of (entry.altNames || [])) {
+    if (alt.toLowerCase().includes(search)) return true;
+  }
+  return false;
+}
 
 const COLORS = Object.freeze({
   CLEAR: '#FFFF00',
@@ -124,10 +198,9 @@ function generateServiceHeaders() {
 async function getForecast(zoneId) {
   const url = apiUrl + `/zones/ZFP/${zoneId}/forecast`;
   logger.info("Getting forecast via URL: " + url);
-  return request.get({
+  return httpGetJson({
     url: url,
-    headers: generateServiceHeaders(),
-    json: true
+    headers: generateServiceHeaders()
   }).then(body => {
     const periods = body.properties.periods;
     if (periods) {
@@ -181,10 +254,9 @@ class WeatherForecast extends q.DesktopApp {
       return this.processZones(zones, search);
     } else {
       logger.info("Retrieving zones via API...");
-      return request.get({
+      return httpGetJson({
         url: apiUrl + '/zones?type=forecast',
-        headers: generateServiceHeaders(),
-        json: true
+        headers: generateServiceHeaders()
       }).then(body => {
         zones = body;
         return this.processZones(zones, search);
@@ -259,23 +331,33 @@ class WeatherForecast extends q.DesktopApp {
     }
 
     logger.info("Processing zones JSON");
+    const aliases = loadCityAliases();
     const options = [];
+    const seen = new Set();
+
     for (let feature of zones.features) {
-      if (feature.properties.type === 'public') {
-        const key = feature.properties.id;
-        let value = feature.properties.name;
+      if (feature.properties.type !== 'public') continue;
+      const key = feature.properties.id;
+      const alias = aliases[key];
+      const aliasHit = search && aliasMatchesSearch(alias, search);
+      const nameHit = !search || feature.properties.name.toLowerCase().includes(search);
 
-        if (!search || value.toLowerCase().includes(search)) {
-          if (feature.properties.state) {
-            value = value + ', ' + feature.properties.state;
-          }
+      if (!aliasHit && !nameHit) continue;
 
-          options.push({
-            key: key,
-            value: value
-          });
-        }
+      let value = feature.properties.name;
+      // When we have a city alias, surface it in the label so users
+      // recognise the zone (e.g. 'Mecklenburg (Charlotte)' instead of
+      // just 'Mecklenburg').
+      if (alias) {
+        value = value + ' (' + alias.city + ')';
       }
+      if (feature.properties.state) {
+        value = value + ', ' + feature.properties.state;
+      }
+
+      if (seen.has(key)) continue;
+      seen.add(key);
+      options.push({ key: key, value: value });
     }
 
     // We sort by alphabetical order first by state and then the region/city
@@ -370,7 +452,8 @@ module.exports = {
   evaluateForecast: evaluateForecast,
   generateServiceHeaders: generateServiceHeaders,
   getForecast: getForecast,
-  generateText: generateText
+  generateText: generateText,
+  loadCityAliases: loadCityAliases
 }
 
 const applet = new WeatherForecast();

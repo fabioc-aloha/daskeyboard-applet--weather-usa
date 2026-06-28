@@ -1,5 +1,19 @@
 # Changelog Q Applet Weather USA
 
+## Version 1.0.14 - Jun 28, 2026
+
+Added city-name aliases for ~47 major US cities. Searching the location picker for `Charlotte`, `Seattle`, `Vegas`, `NYC`, etc. now finds the correct NWS zone (which is named by county, not city). Aliases live in `city-aliases.json` and are easy to extend.
+
+## Version 1.0.13 - Jun 28, 2026
+
+Maintenance release:
+
+- Replaced deprecated `request-promise` dependency with Node's built-in `https` module (no new runtime dependencies).
+- Removed bogus `fs` npm dependency (`fs` is a Node built-in; the npm package is a placeholder).
+- Upgraded Mocha 5.2 → 10.7 (security + modern test runner).
+
+No behavior changes.
+
 ## Version 1.0.12 - Jan 27, 2023
 
 Updated processing of zones json.
